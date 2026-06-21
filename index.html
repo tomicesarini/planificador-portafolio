@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Planificador Visual de Portafolio</title>
+    <link rel="stylesheet" href="./styles.css?v=14">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="Mapa visual del portafolio">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Planificador visual</p>
+            <h1>Portafolio</h1>
+          </div>
+          <div class="top-actions">
+            <button class="icon-button" id="resetDemoButton" type="button" aria-label="Cargar ejemplo" title="Cargar ejemplo">
+              <span aria-hidden="true">↺</span>
+            </button>
+            <button class="icon-button" id="exportButton" type="button" aria-label="Exportar JSON" title="Exportar JSON">
+              <span aria-hidden="true">⇩</span>
+            </button>
+            <label class="icon-button file-button" aria-label="Importar JSON" title="Importar JSON">
+              <span aria-hidden="true">⇧</span>
+              <input id="importInput" type="file" accept="application/json">
+            </label>
+          </div>
+        </header>
+
+        <nav class="crumbs" id="breadcrumbs" aria-label="Ruta del grupo seleccionado"></nav>
+
+        <div class="visual-stage">
+          <div class="treemap-frame">
+            <div class="treemap" id="treemap" aria-label="Distribución visual"></div>
+          </div>
+          <aside class="inspector" aria-label="Resumen">
+            <div>
+              <span class="metric-label">Grupo actual</span>
+              <strong id="currentGroupName">Portafolio</strong>
+            </div>
+            <div>
+              <span class="metric-label">Asignado</span>
+              <strong id="assignedMetric">0%</strong>
+            </div>
+            <div>
+              <span class="metric-label">Disponible</span>
+              <strong id="availableMetric">100%</strong>
+            </div>
+            <p class="status" id="statusText"></p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="editor" aria-label="Editor de porcentajes">
+        <div class="editor-header">
+          <div>
+            <p class="eyebrow">Asignaciones</p>
+            <h2 id="editorTitle">Portafolio</h2>
+          </div>
+          <button class="primary-button" id="addButton" type="button">
+            <span aria-hidden="true">＋</span>
+            Agregar
+          </button>
+        </div>
+
+        <form class="quick-add" id="quickAddForm" autocomplete="off">
+          <label>
+            Nombre
+            <input id="nameInput" name="name" type="text" placeholder="Acciones" autocomplete="off">
+          </label>
+          <label>
+            %
+            <input id="percentInput" name="percent" type="number" min="0" max="100" step="0.1" placeholder="40" autocomplete="off">
+          </label>
+        </form>
+
+        <div class="allocation-list" id="allocationList" aria-live="polite"></div>
+
+        <section class="money-panel" aria-label="Desglose del portafolio">
+          <label class="portfolio-total">
+            Total portafolio
+            <input id="portfolioValueInput" type="number" min="0" step="100" placeholder="100000" autocomplete="off">
+          </label>
+          <div class="money-summary">
+            <span class="metric-label">Calculado</span>
+            <strong id="portfolioValueDisplay">$0</strong>
+          </div>
+          <div class="breakdown-toolbar" aria-label="Orden del desglose">
+            <button class="sort-button" type="button" data-breakdown-sort="added">Agregado</button>
+            <button class="sort-button active" type="button" data-breakdown-sort="largest">Mayor a menor</button>
+          </div>
+          <div class="breakdown-list" id="breakdownList" aria-live="polite"></div>
+        </section>
+      </section>
+    </main>
+
+    <template id="allocationRowTemplate">
+      <article class="allocation-row">
+        <label class="swatch-picker" aria-label="Elegir color">
+          <input class="color-field" type="color" aria-label="Color">
+          <span class="swatch" aria-hidden="true"></span>
+        </label>
+        <input class="name-field" type="text" aria-label="Nombre">
+        <div class="percent-field">
+          <input type="number" min="0" max="100" step="0.1" aria-label="Porcentaje">
+          <span>%</span>
+        </div>
+        <button class="row-button drill-button" type="button" aria-label="Entrar al grupo" title="Entrar al grupo">
+          <span aria-hidden="true">›</span>
+        </button>
+        <button class="row-button delete-button" type="button" aria-label="Eliminar" title="Eliminar">
+          <span aria-hidden="true">×</span>
+        </button>
+      </article>
+    </template>
+
+    <script src="./app.js?v=14"></script>
+  </body>
+</html>
