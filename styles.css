@@ -480,6 +480,165 @@ input:focus {
   padding-top: 18px;
 }
 
+.actual-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.panel-heading,
+.actual-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.actual-tools {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.secondary-button,
+.ghost-button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 11px;
+  font-weight: 850;
+}
+
+.secondary-button {
+  background: white;
+  color: var(--accent-strong);
+}
+
+.ghost-button {
+  background: transparent;
+  color: var(--muted);
+}
+
+.image-preview-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.image-preview-list img {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.scan-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.ocr-text textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 11px;
+  color: var(--ink);
+  font: inherit;
+  text-transform: none;
+}
+
+.actual-list {
+  display: grid;
+  gap: 8px;
+}
+
+.actual-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr) 34px;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 8px;
+}
+
+.actual-row select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  padding: 10px 9px;
+  font: inherit;
+}
+
+.rebalance-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.rebalance-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.rebalance-table th,
+.rebalance-table td {
+  border-bottom: 1px solid rgba(217, 210, 198, 0.82);
+  padding: 9px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rebalance-table th:first-child,
+.rebalance-table td:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.rebalance-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.rebalance-asset {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 850;
+}
+
+.rebalance-asset span {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  background: var(--row-color);
+}
+
+.needs-buy td:last-child {
+  color: var(--good);
+}
+
+.needs-sell td:last-child {
+  color: var(--warning);
+}
+
+.unmatched-row td:last-child {
+  color: var(--muted);
+}
+
 .portfolio-total {
   display: grid;
   gap: 7px;
@@ -688,5 +847,19 @@ input:focus {
   .allocation-row {
     grid-template-columns: 34px minmax(0, 1fr) 84px 34px 34px;
     display: grid;
+  }
+
+  .panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .actual-row {
+    grid-template-columns: minmax(0, 1fr) 104px 34px;
+  }
+
+  .actual-plan-select {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }

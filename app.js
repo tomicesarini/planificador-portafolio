@@ -1,5 +1,6 @@
 (function () {
   const storageKey = "visual-portfolio-planner:v1";
+  const actualStorageKey = "visual-portfolio-planner:actual:v1";
   const palette = ["#176b87", "#9b5d35", "#217247", "#7d4f9f", "#b23a48", "#2f6f73", "#b2842f", "#345995"];
   const makeId = () => {
     if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
@@ -40,6 +41,8 @@
   };
 
   let portfolio = loadPortfolio();
+  let actualPositions = loadActualPositions();
+  let selectedImageFiles = [];
   let selectedPath = [];
   let breakdownSort = "largest";
 
@@ -61,6 +64,16 @@
     portfolioValueDisplay: document.getElementById("portfolioValueDisplay"),
     breakdownSortButtons: document.querySelectorAll("[data-breakdown-sort]"),
     breakdownList: document.getElementById("breakdownList"),
+    actualImagesInput: document.getElementById("actualImagesInput"),
+    imagePreviewList: document.getElementById("imagePreviewList"),
+    scanImagesButton: document.getElementById("scanImagesButton"),
+    scanStatus: document.getElementById("scanStatus"),
+    ocrTextInput: document.getElementById("ocrTextInput"),
+    parseTextButton: document.getElementById("parseTextButton"),
+    addActualButton: document.getElementById("addActualButton"),
+    clearActualButton: document.getElementById("clearActualButton"),
+    actualList: document.getElementById("actualList"),
+    rebalanceTableBody: document.getElementById("rebalanceTableBody"),
     exportButton: document.getElementById("exportButton"),
     importInput: document.getElementById("importInput"),
     resetDemoButton: document.getElementById("resetDemoButton")
@@ -80,6 +93,28 @@
     } catch {
       return structuredClone(demoPortfolio);
     }
+  }
+
+  function loadActualPositions() {
+    const saved = localStorage.getItem(actualStorageKey);
+    if (!saved) return [];
+
+    try {
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(sanitizeActualPosition);
+    } catch {
+      return [];
+    }
+  }
+
+  function sanitizeActualPosition(position) {
+    return {
+      id: position.id || makeId(),
+      name: String(position.name || "Activo"),
+      amount: clampMoney(position.amount),
+      planId: position.planId || ""
+    };
   }
 
   function sanitizeGroup(group, fallbackName) {
@@ -106,6 +141,10 @@
     localStorage.setItem(storageKey, JSON.stringify(portfolio));
   }
 
+  function saveActualPositions() {
+    localStorage.setItem(actualStorageKey, JSON.stringify(actualPositions));
+  }
+
   function clampPercent(value) {
     const number = Number(value);
     if (!Number.isFinite(number)) return 0;
@@ -124,11 +163,52 @@
   }
 
   function formatMoney(value) {
+    const absoluteValue = Math.abs(value);
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
       currency: "USD",
-      maximumFractionDigits: value >= 1000 ? 0 : 2
+      maximumFractionDigits: absoluteValue >= 1000 ? 0 : 2
     }).format(value);
+  }
+
+  function parseMoney(value) {
+    const text = String(value || "").trim();
+    if (!text) return 0;
+
+    let cleaned = text.replace(/[^\d,.-]/g, "");
+    const sign = cleaned.includes("-") ? -1 : 1;
+    cleaned = cleaned.replace(/-/g, "");
+
+    const lastSeparator = Math.max(cleaned.lastIndexOf("."), cleaned.lastIndexOf(","));
+    const decimalPart = lastSeparator >= 0 ? cleaned.slice(lastSeparator + 1) : "";
+    const hasDecimalPart = decimalPart.length > 0 && decimalPart.length <= 2;
+    const integerPart = hasDecimalPart ? cleaned.slice(0, lastSeparator) : cleaned;
+    const normalized = hasDecimalPart
+      ? `${integerPart.replace(/[.,]/g, "")}.${decimalPart}`
+      : integerPart.replace(/[.,]/g, "");
+    return clampMoney(sign * Number(normalized));
+  }
+
+  function normalizeName(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function similarityScore(source, target) {
+    const sourceName = normalizeName(source);
+    const targetName = normalizeName(target);
+    if (!sourceName || !targetName) return 0;
+    if (sourceName === targetName) return 1;
+    if (sourceName.includes(targetName) || targetName.includes(sourceName)) return 0.86;
+
+    const sourceWords = new Set(sourceName.split(" ").filter(Boolean));
+    const targetWords = new Set(targetName.split(" ").filter(Boolean));
+    const hits = [...sourceWords].filter((word) => targetWords.has(word)).length;
+    return hits / Math.max(sourceWords.size, targetWords.size, 1);
   }
 
   function hexToRgba(hex, alpha) {
@@ -464,6 +544,63 @@
     });
   }
 
+  function getPlanPositionRows(items = portfolio.items, parentTotalPercent = 100, path = []) {
+    return items.flatMap((item) => {
+      const totalPercent = (parentTotalPercent * item.percent) / 100;
+      const currentPath = [...path, item.name];
+      if (item.items.length > 0) {
+        return getPlanPositionRows(item.items, totalPercent, currentPath);
+      }
+
+      return [{
+        id: item.id,
+        name: item.name,
+        path: currentPath.join(" / "),
+        color: item.color,
+        totalPercent,
+        targetAmount: (portfolio.value * totalPercent) / 100
+      }];
+    });
+  }
+
+  function findBestPlanMatch(name) {
+    const planRows = getPlanPositionRows();
+    let best = { id: "", score: 0 };
+    planRows.forEach((row) => {
+      const score = Math.max(similarityScore(name, row.name), similarityScore(name, row.path));
+      if (score > best.score) {
+        best = { id: row.id, score };
+      }
+    });
+    return best.score >= 0.45 ? best.id : "";
+  }
+
+  function parseActualPositionsFromText(text) {
+    return String(text || "")
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/(.+?)\s+([$€£]?\s*-?\d[\d.,\s]*)$/) || line.match(/^([$€£]?\s*-?\d[\d.,\s]*)\s+(.+)$/);
+        if (!match) return null;
+
+        const firstPartIsMoney = /^\s*[$€£]?\s*-?\d/.test(match[1]);
+        const rawName = firstPartIsMoney ? match[2] : match[1];
+        const rawAmount = firstPartIsMoney ? match[1] : match[2];
+        const amount = parseMoney(rawAmount);
+        const name = rawName.replace(/\s{2,}/g, " ").trim();
+        if (!name || amount <= 0) return null;
+
+        return {
+          id: makeId(),
+          name,
+          amount,
+          planId: findBestPlanMatch(name)
+        };
+      })
+      .filter(Boolean);
+  }
+
   function renderBreakdown() {
     const rows = getBreakdownRows(portfolio.items);
 
@@ -518,6 +655,126 @@
     });
   }
 
+  function renderActualPositions() {
+    const planRows = getPlanPositionRows();
+    const planById = new Map(planRows.map((row) => [row.id, row]));
+
+    els.actualList.innerHTML = "";
+    if (actualPositions.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "breakdown-empty";
+      empty.textContent = "Todavía no hay posiciones reales cargadas.";
+      els.actualList.appendChild(empty);
+    } else {
+      actualPositions.forEach((position, index) => {
+        const row = document.createElement("article");
+        row.className = "actual-row";
+        row.innerHTML = `
+          <input class="actual-name-input" type="text" aria-label="Nombre real">
+          <input class="actual-money-input" type="number" min="0" step="100" aria-label="Monto actual">
+          <select class="actual-plan-select" aria-label="Activo del plan"></select>
+          <button class="row-button delete-button" type="button" aria-label="Eliminar posición" title="Eliminar">×</button>
+        `;
+
+        const nameInput = row.querySelector(".actual-name-input");
+        const moneyInput = row.querySelector(".actual-money-input");
+        const planSelect = row.querySelector(".actual-plan-select");
+        const deleteButton = row.querySelector(".delete-button");
+
+        nameInput.value = position.name;
+        moneyInput.value = position.amount || "";
+        planSelect.innerHTML = `<option value="">Sin vincular</option>${planRows.map((planRow) => (
+          `<option value="${planRow.id}">${planRow.path}</option>`
+        )).join("")}`;
+        planSelect.value = planById.has(position.planId) ? position.planId : "";
+
+        nameInput.addEventListener("input", () => {
+          position.name = nameInput.value || `Posición ${index + 1}`;
+          if (!position.planId) {
+            position.planId = findBestPlanMatch(position.name);
+          }
+          saveActualPositions();
+          renderRebalanceTable();
+        });
+
+        moneyInput.addEventListener("input", () => {
+          position.amount = clampMoney(moneyInput.value);
+          saveActualPositions();
+          renderRebalanceTable();
+        });
+
+        planSelect.addEventListener("change", () => {
+          position.planId = planSelect.value;
+          saveActualPositions();
+          renderRebalanceTable();
+        });
+
+        deleteButton.addEventListener("click", () => {
+          actualPositions = actualPositions.filter((candidate) => candidate.id !== position.id);
+          saveActualPositions();
+          renderActualPositions();
+        });
+
+        els.actualList.appendChild(row);
+      });
+    }
+
+    renderRebalanceTable();
+  }
+
+  function renderRebalanceTable() {
+    const planRows = getPlanPositionRows();
+    const planIds = new Set(planRows.map((row) => row.id));
+    const actualByPlan = new Map();
+
+    actualPositions.forEach((position) => {
+      if (!position.planId || !planIds.has(position.planId)) return;
+      actualByPlan.set(position.planId, (actualByPlan.get(position.planId) || 0) + position.amount);
+    });
+
+    els.rebalanceTableBody.innerHTML = "";
+    if (planRows.length === 0) {
+      const emptyRow = document.createElement("tr");
+      emptyRow.innerHTML = `<td colspan="4">Agregá activos al plan para ver la comparación.</td>`;
+      els.rebalanceTableBody.appendChild(emptyRow);
+      return;
+    }
+
+    planRows
+      .map((row) => ({
+        ...row,
+        actualAmount: actualByPlan.get(row.id) || 0
+      }))
+      .sort((a, b) => b.targetAmount - a.targetAmount)
+      .forEach((row) => {
+        const difference = row.targetAmount - row.actualAmount;
+        const tableRow = document.createElement("tr");
+        tableRow.className = difference >= 0 ? "needs-buy" : "needs-sell";
+        tableRow.style.setProperty("--row-color", row.color);
+        tableRow.innerHTML = `
+          <td><span class="rebalance-asset"><span></span>${row.path}</span></td>
+          <td>${formatMoney(row.actualAmount)}</td>
+          <td>${formatMoney(row.targetAmount)}</td>
+          <td><strong>${difference >= 0 ? "+" : ""}${formatMoney(difference)}</strong></td>
+        `;
+        els.rebalanceTableBody.appendChild(tableRow);
+      });
+
+    actualPositions
+      .filter((position) => !position.planId || !planIds.has(position.planId))
+      .forEach((position) => {
+        const tableRow = document.createElement("tr");
+        tableRow.className = "unmatched-row";
+        tableRow.innerHTML = `
+          <td>${position.name}</td>
+          <td>${formatMoney(position.amount)}</td>
+          <td>Sin objetivo</td>
+          <td><strong>Vincular</strong></td>
+        `;
+        els.rebalanceTableBody.appendChild(tableRow);
+      });
+  }
+
   function renderRows() {
     const group = getSelectedGroup();
     els.allocationList.innerHTML = "";
@@ -539,6 +796,7 @@
         savePortfolio();
         renderTreemap();
         renderBreakdown();
+        renderActualPositions();
       });
 
       nameField.value = item.name;
@@ -548,6 +806,7 @@
         renderTreemap();
         renderBreadcrumbs();
         renderBreakdown();
+        renderActualPositions();
       });
 
       percentField.value = item.percent;
@@ -557,6 +816,7 @@
         renderTreemap();
         renderMetrics(group);
         renderBreakdown();
+        renderActualPositions();
       });
 
       drillButton.addEventListener("click", () => {
@@ -604,6 +864,7 @@
     renderMetrics(group);
     renderRows();
     renderBreakdown();
+    renderActualPositions();
   }
 
   els.addButton.addEventListener("click", addItem);
@@ -616,6 +877,7 @@
     portfolio.value = clampMoney(els.portfolioValueInput.value);
     savePortfolio();
     renderBreakdown();
+    renderActualPositions();
   });
 
   els.breakdownSortButtons.forEach((button) => {
@@ -623,6 +885,81 @@
       breakdownSort = button.dataset.breakdownSort;
       renderBreakdown();
     });
+  });
+
+  els.actualImagesInput.addEventListener("change", () => {
+    selectedImageFiles = [...els.actualImagesInput.files];
+    els.imagePreviewList.innerHTML = "";
+    selectedImageFiles.forEach((file) => {
+      const image = document.createElement("img");
+      image.alt = file.name;
+      image.src = URL.createObjectURL(file);
+      image.addEventListener("load", () => URL.revokeObjectURL(image.src), { once: true });
+      els.imagePreviewList.appendChild(image);
+    });
+    els.scanStatus.textContent = selectedImageFiles.length
+      ? `${selectedImageFiles.length} foto(s) cargada(s).`
+      : "Cargá una captura o foto, leé el texto y revisá los importes antes de usar la tabla.";
+  });
+
+  els.scanImagesButton.addEventListener("click", async () => {
+    if (selectedImageFiles.length === 0) {
+      els.scanStatus.textContent = "Primero cargá una o más fotos.";
+      return;
+    }
+
+    if (!globalThis.Tesseract) {
+      els.scanStatus.textContent = "No se pudo cargar el lector de fotos. Pegá el texto o cargá las posiciones manualmente.";
+      return;
+    }
+
+    els.scanImagesButton.disabled = true;
+    els.scanStatus.textContent = "Leyendo fotos...";
+
+    try {
+      const texts = [];
+      for (const file of selectedImageFiles) {
+        const result = await globalThis.Tesseract.recognize(file, "eng+spa");
+        texts.push(result.data.text);
+      }
+      els.ocrTextInput.value = texts.join("\n");
+      els.scanStatus.textContent = "Texto detectado. Revisalo y usá el botón para armar posiciones.";
+    } catch {
+      els.scanStatus.textContent = "No pude leer esas fotos. Probá pegando el texto o cargando las posiciones a mano.";
+    } finally {
+      els.scanImagesButton.disabled = false;
+    }
+  });
+
+  els.parseTextButton.addEventListener("click", () => {
+    const parsedPositions = parseActualPositionsFromText(els.ocrTextInput.value);
+    if (parsedPositions.length === 0) {
+      els.scanStatus.textContent = "No encontré líneas con nombre e importe. Probá con una línea por activo, por ejemplo: FSLR 1200000.";
+      return;
+    }
+
+    actualPositions = [...actualPositions, ...parsedPositions];
+    saveActualPositions();
+    renderActualPositions();
+    els.scanStatus.textContent = `${parsedPositions.length} posición(es) agregada(s). Revisá los vínculos antes de operar.`;
+  });
+
+  els.addActualButton.addEventListener("click", () => {
+    actualPositions.push({
+      id: makeId(),
+      name: "Activo",
+      amount: 0,
+      planId: ""
+    });
+    saveActualPositions();
+    renderActualPositions();
+  });
+
+  els.clearActualButton.addEventListener("click", () => {
+    actualPositions = [];
+    saveActualPositions();
+    renderActualPositions();
+    els.scanStatus.textContent = "Posiciones reales borradas.";
   });
 
   els.exportButton.addEventListener("click", () => {
